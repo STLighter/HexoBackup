@@ -86,3 +86,45 @@ main();
 ```
 
 具体的原理应该和Array随机访问的方式有关,这一点需要进一步研究.
+
+---
+
+### 后记2
+
+拜读了Jay Conrod的[A tour of V8: object representation](http://www.jayconrod.com/posts/52/a-tour-of-v8-object-representation)(中文版戳[这里](http://newhtml.net/v8-object-representation/)).
+根据里面的描述,数组通常使用Fast Element, 但如果在远远超过当前数组大小的地方赋值的话,数组会被转成字典模式(访问较慢).这意味着如果需要一个固定大小的数组,而且需要随机访问的话,相比不事先指定长度,或者给数组赋值length,按顺序加length个初始值进去再访问效率更高.因为这样不会使得数组的属性访问变成字典模式(不过如果访问是稀疏的,赋值length个值可能消耗更多,这个看实际情况取舍了)
+
+```javascript
+var Step = 1025;
+var Loop = 1024;
+var N = Step * Loop;
+var a_setL = [];
+var a_unsetL = [];
+function main() {
+    var start = Date.now();
+    for(var i = 0; i < N; ++i) {
+        a_setL[i] = 0;
+    }
+    for(var i = N - 1; i >= 0; --i) {
+        a_setL[i] = i;
+    }
+    
+    print("Set Length Done in " + (Date.now() - start));
+
+    start = Date.now();
+    for(var i = N - 1; i >= 0; --i) {
+        a_unsetL[i] = i;
+    }
+    print("Didn't Set Length Done in " + (Date.now() - start));
+}
+
+main();
+```
+
+嘛,等我再消化消化而且另一个问题有了眉目之后,大概会删掉这篇,另外写一篇总结吧~
+
+---
+
+### 后记3
+
+卧槽,shift的坑居然在heap的实现里面.在dalao的指引下看了[这个](http://stackoverflow.com/questions/27341352/why-does-a-a-nodejs-array-shift-push-loop-run-1000x-slower-above-array-length-87).根据Andras的回答,数组的大小不同决定了它在堆里存放的位置.小的数组(我猜是放在年轻分代里)在执行移动元素的操作时,其实在堆中只是移动了指针而已.当大小超过一定数值,数组将会被放到一个用于存放大对象的大对象空间(一页一个对象),而由于内存对齐的原因(大概是页对齐?)不能通过移动指针实现,只能真实的在内存中移动数据,因此效率降低.
