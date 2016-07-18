@@ -179,7 +179,7 @@ var ST_on = (function () {
 
 红宝书(《JavaScript高级程序设计》)上是这样封装的:
 ```JavaScript
-EventUtil (Professional JavaScript for Web Developer 3rd Edition - Chinese - 13.3.3 P360)
+// EventUtil (Professional JavaScript for Web Developer 3rd Edition - Chinese - 13.3.3 P360)
 var EventUtil = {
 	addHandler: function (ele, type, handler) {
 		// 省略
