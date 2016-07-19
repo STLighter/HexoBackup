@@ -157,7 +157,7 @@ var ST_on = (function () {
 				}
 			}
 		}
-		// 执行真正的添加事件方法
+		// 执行真正的删除事件方法
 		_removeHandler.apply(this, arguments);
 	}
 
@@ -169,6 +169,8 @@ var ST_on = (function () {
 })();
 ```
 简单的说就是第一次执行的时候进行能力检测, 并把检测结果放到私有变量中缓存, 再次执行时直接从缓存中取出对应的方法对象.
+
+---
 
 接下来处理事件对象和作用域.
 事件对象同样存在兼容问题.
@@ -306,7 +308,7 @@ function fixHandler (context, handler) {
 		}
 
 		// 给真正的handler传入包装过的event, 并且修正其作用域
-		return handler.apply(context, [ST_event].concat(Array.prototype.slice.call(arguments, 1)));
+		return handler.call(context, ST_event);
 	}
 }
 // 添加事件
@@ -354,7 +356,456 @@ ST_on.addHandler(window, 'load', function () {
 });
 ```
 但是这样做之后会产生一个问题: 我们绑定的是新的事件处理函数, 这样`removeHandler()`的时候传入旧的`handler`是没有用的. 如果返回`fixHandler`以便删除的时候使用的话, 既不优美也容易因为忘记而使用原先的`handler`.
-所以我们需要在内部缓存新的`fixHandler`, 并且要使得用旧的`handler`能够快速找到对应的`fixHandler`. 
+所以我们需要在内部缓存新的`fixHandler`, 并且要使得用旧的`handler`能够快速找到对应的`fixHandler`. 此外引入缓存的话还能顺便将attach的顺序问题和DOM0级事件绑定不了多个处理函数的问题解决.
 
-(引入缓存机制的话还能顺便将attach的顺序问题和DOM0级事件绑定不了多个处理函数的问题解决, 本来完全不打算做这么多, 似乎开了一个大坑呢. 另外自定义事件和事件委托等完全不打算做, 所以不要期待)
-未完待续...
+---
+
+后面部分内容的思路和[Dean Edwards的方法](http://dean.edwards.name/weblog/2005/10/add-event/)类似, 但会更进一步.
+
+为了能够用`handler`方便的查找缓存, 我们需要给每个`handler`一个全局唯一标识(最开始觉得只要保证一个DOM元素的一类事件下`handler`标识不同就可以了, 但是后来考虑到一个`handler`可能绑到许多元素中, 不用全局标识可能会导致冲突).
+做法也很简单, 我们给`handler`添加一个`ST_guid`属性, 属性的值通过一个自增的变量得到.
+```JavaScript
+// 添加事件
+function add (ele, type, handler) {
+	// 保证原handler有id
+	if(!handler.ST_guid) {
+		handler.ST_guid = ++guid;
+	}
+	// 省略
+}
+```
+然后, 我们给DOM元素添加`ST_events`属性, 用来分类缓存`fixedHandler`. 每个`ST_events`下根据事件类型放了一个`fixedHandlers`, 而`fixedHandlers`则以`handler.ST_guid`为`key`存放对应的`fixedHandler`. 每次添加时像缓存中加入, 删除时从缓存中查找就可以了. 这样`removeHandler`也能正常使用了.
+大致结构如下:
+![handlers](/uploads/handlers.jpg)
+```JavaScript
+// 添加事件
+function add (ele, type, handler) {
+	// 保证原handler有id
+	if(!handler.ST_guid) {
+		handler.ST_guid = ++guid;
+	}
+	// 向dom节点对象中添加ST_events属性, 用来分类别缓存fixedHandler
+	if(!ele.ST_events)
+		ele.ST_events = {};
+
+	// 获取对应类别用来缓存fixedHandler的对象
+	var fixedHandlers = ele.ST_events[type];
+	if(!fixedHandlers) {
+		fixedHandlers = ele.ST_events[type] = {};
+	}
+
+	// 根据id获取fixedHandler, 不存在则生成一个
+	var fixedHandler = fixedHandlers[handler.ST_guid];
+	if(!fixedHandler)
+		fixedHandler = fixedHandlers[handler.ST_guid] = fixHandler(ele, handler);
+	
+	// 检测缓存的addHandler方法
+	if(!_addHandler) {
+		// 能力检测
+		// 省略
+	}
+	// 执行真正的添加事件处理程序方法, 加入fixedHandler
+	_addHandler.call(this, ele, type, fixedHandler);
+}
+
+// 删除事件
+function remove (ele, type, handler) {
+	// 查找缓存的fixedHandler
+	if(!handler.ST_guid||!ele.ST_events)
+		return;
+	var fixedHandlers = ele.ST_events[type];
+	if(!fixedHandlers)
+		return;
+	var fixedHandler = fixedHandlers[handler.ST_guid];
+	if(!fixedHandler)
+		return;
+	// 清除缓存
+	fixedHandlers[handler.ST_guid] = null;
+
+	// 检测缓存的removeHandler方法
+	if(!_removeHandler) {
+		// 能力检测
+		// 省略
+	}
+	// 执行真正的删除事件方法
+	_removeHandler.call(this, ele, type, fixedHandler);
+}
+```
+
+---
+
+我们可以注意到, 我们封装的`addHandler()`方法如果遇到只支持DOM0级方法的上古浏览器, 依然只能绑定一个事件, 同时用`attachEvent()`加入的函数的触发顺序也和其他的不同.
+要解决这两点, 简单的思路就是只绑定一个事件处理方法, 用这个方法去触发其他添加进来的方法, 这样触发的顺序我们也可以自己控制. 这需要我们自己维护一个触发队列, 我们写一个`HandlerEmiter`类来封装整个逻辑, 每个DOM对象的一个事件对应一个`HandlerEmiter`对象.
+另外值得注意的是, 由于现在要把事件处理函数加入到我们自己写的对象中去, `addHandler()`等方法也要做相应的修改, 改动会比较大.
+
+先创建一个`HandlerEmiter`类, 属性中`handlerQueue`表示事件队列, `size`表示队列的大小. 其包含有`addHandler()`, `removeHandler()`, 和`emit()`方法, 分别用于向队列中添加,移除`handler`和触发队列中所有`handler`.
+由于触发是自己做的, `event`的兼容就可以在`emit`里面做了, 作用域的修正也能在`handlerQueue.addHandler()`里面做, 这样之前的`fixHandler()`就可以移除了.
+添加`handler`的时候先修正作用域, 把修正的后的`fixedHandler`放入队列中.
+移除`handler`的时候直接在队列中查找(直接用字典方式查找)并删除.
+```JavaScript
+// 事件触发类, 管理和触发事件处理函数队列
+function HandlerEmiter () {
+	// handlerQueue相当于之前的ST_events[type](fixedHandlers)
+	this.handlerQueue = {};
+	// 队列大小
+	this.size = 0;
+}
+
+HandlerEmiter.prototype = {
+	constructor: HandlerEmiter,
+	// 修正handler作用域
+	fixHandler: function (context, handler) {
+		// 返回一个修正作用域的handler
+		return function (event) {
+			// 对象兼容性在emit里面处理
+			// 修正作用域
+			return handler.call(context, event);
+		}
+	},
+	// 向队列中加入事件处理函数
+	addHandler: function (context, handler) {
+		var fixedHandlers = this.handlerQueue;
+
+		// 保证原handler有id
+		if(!handler.ST_guid) {
+			handler.ST_guid = ++guid;
+		}
+
+		// 是否已经存在
+		if(!fixedHandlers[handler.ST_guid]) {
+			// 不存在则修正作用域并添加
+			fixedHandlers[handler.ST_guid] = this.fixHandler(context, handler);
+			++this.size;
+		}
+		// 不需要实际向DOM事件中添加fixedHandlers[handler.ST_guid], 由emit方法统一调度
+	},
+	// 移除事件处理函数
+	removeHandler: function (handler) {
+		var fixedHandlers = this.handlerQueue;
+		// 查找对应的fixedHandler
+		if(!handler.ST_guid||!fixedHandlers[handler.ST_guid])
+			return;
+		// 从队列中移除fixedHandler
+		fixedHandlers[handler.ST_guid] = null;
+		--this.size;
+	}
+}
+```
+`emit()`方法包装`event`, 并枚举队列里面每个`fixedHandler`(是按加入顺序的)执行.
+```JavaScript
+this.emit = function (event) {
+	// 处理对象的兼容性
+	_event = event? event: window.event;
+	_target = _event.target || _event.srcElement;
+	_preventDefault = function () {
+		if(_event.preventDefault) {
+			_event.preventDefault();
+		} else {
+			_event.returnValue = false;
+		}
+	}
+	_stopPropagation = 	function () {
+		if(_event.stopPropagation) {
+			_event.stopPropagation();
+		} else {
+			_event.cancelBubble = true;
+		}
+	}
+	// 包装成一个新的对象
+	var ST_event = {
+		event: _event,
+		target: _target,
+		preventDefault: _preventDefault,
+		stopPropagation: _stopPropagation
+	}
+
+	// 顺序触发队列中的handler
+	for(var id in handlerQueue) {
+		if(handlerQueue[id])
+			handlerQueue[id](ST_event);
+	}
+}
+```
+这里`emit()`方法是单独写的, 因为在`emit()`执行的时候`this`可能是`window`或者触发事件的DOM元素, 用`this.handlerQueue`是拿不到队列的, 所以这里我单独拿出来, 放到构造函数里.
+```JavaScript
+function HandlerEmiter () {
+	// 局部变量为了给emit用
+	var handlerQueue = {};
+
+	// handlerQueue相当于之前的ST_events[type](fixedHandlers)
+	this.handlerQueue = handlerQueue;
+
+	// 队列大小
+	this.size = 0;
+
+	// 实际加在DOM对象上的事件处理函数, 因为调用emit的时候this可能是触发的DOM元素, 所以不能用this.handlerQueue;
+	this.emit = function (event) {
+
+		// 省略
+
+		// 顺序触发队列中的handler
+		for(var id in handlerQueue) {
+			if(handlerQueue[id])
+				handlerQueue[id](ST_event);
+		}
+	}
+}
+
+```
+`add()`和`remove()`也需要进行修改.
+当第一次给DOM元素绑定某个类型事件的时候创建一个新的`HandlerEmiter`对象并绑定其`emit()`方法, 然后再将实际的方法加到其队列中. `HandlerEmiter`对象根据类型放在DOM元素的属性里(类似前面ST_events).
+当移除方法的时候直接从队列里面移除, 当队列为空时移除DOM元素上的方法绑定.
+```JavaScript
+// 添加事件
+function add (ele, type, handler) {
+	// 向dom节点对象中添加ST_handlerEmiters属性, 用来分类别缓存ST_handlerEmiter
+	if(!ele.ST_handlerEmiters)
+		ele.ST_handlerEmiters = {};
+
+	// 获取对应类别用的handlerEmiter对象
+	var handlerEmiter = ele.ST_handlerEmiters[type];
+	if(!handlerEmiter) {
+		// 第一次在该DOM对象上监听此事件, 需要加入handlerEmiter.emit()
+		handlerEmiter = ele.ST_handlerEmiters[type] = new HandlerEmiter();
+
+		// 检测缓存的addHandler方法
+		if(!_addHandler) {
+			// 能力检测
+			// 省略
+		}
+		// 执行真正的添加事件处理程序方法, 加入处理程序handlerEmiter.emit()
+		_addHandler.call(this, ele, type, handlerEmiter.emit);
+	}
+	// 之前已经绑定过handlerEmiter.emit(), 直接向队列中添加handler
+	handlerEmiter.addHandler(ele, handler);
+}
+
+// 删除事件
+function remove (ele, type, handler) {
+	// 查找缓存的fixedHandler
+	if(!ele.ST_handlerEmiters)
+		return;
+	var handlerEmiter = ele.ST_handlerEmiters[type];
+	if(!handlerEmiter)
+		return;
+	handlerEmiter.removeHandler(handler);
+	// handlerEmiter中队列为空, 则清除Emiter
+	if(handlerEmiter.size === 0) {
+		// 检测缓存的removeHandler方法
+		if(!_removeHandler) {
+			// 能力检测
+			// 省略
+		}
+		// 执行真正的删除事件方法
+		_removeHandler.call(this, ele, type, handlerEmiter.emit);
+		// 清除放在DOM上的属性
+		ele.ST_handlerEmiters[type] = null;
+	}
+}
+```
+
+以上的代码还能进一步的改进, 比如将event写成类, 将ST_handlerEmiters放在一个表内部, 并给DOM对象加上一个`id`用来查找, 以便尽量少的修改DOM对象等等, 暂时就不加了, 以后有空的话也许会写.(自定义事件和事件委托等完全不打算做2333)
+总体代码:
+```JavaScript
+var ST_on = (function () {
+	// 局部私有变量, 缓存对应的方法
+	var _addHandler,
+		_removeHandler;
+
+	// 用于给不同handler附加id
+	var guid = 0;
+
+	// 事件触发类, 管理和触发事件处理函数队列
+	function HandlerEmiter () {
+		
+		// 局部变量为了给emit用
+		var handlerQueue = {};
+
+		// handlerQueue相当于之前的ST_events[type](fixedHandlers)
+		this.handlerQueue = handlerQueue;
+
+		// 队列大小
+		this.size = 0;
+
+		// 实际加在DOM对象上的事件处理函数, 因为调用emit的时候this可能是触发的DOM元素, 所以不能用this.handlerQueue;
+		this.emit = function (event) {
+			// 处理对象的兼容性
+			_event = event? event: window.event;
+			_target = _event.target || _event.srcElement;
+			_preventDefault = function () {
+				if(_event.preventDefault) {
+					_event.preventDefault();
+				} else {
+					_event.returnValue = false;
+				}
+			}
+			_stopPropagation = 	function () {
+				if(_event.stopPropagation) {
+					_event.stopPropagation();
+				} else {
+					_event.cancelBubble = true;
+				}
+			}
+			// 包装成一个新的对象
+			var ST_event = {
+				event: _event,
+				target: _target,
+				preventDefault: _preventDefault,
+				stopPropagation: _stopPropagation
+			}
+
+			// 顺序触发队列中的handler
+			for(var id in handlerQueue) {
+				if(handlerQueue[id])
+					handlerQueue[id](ST_event);
+			}
+		}
+	}
+	HandlerEmiter.prototype = {
+		constructor: HandlerEmiter,
+		// 修正handler作用域
+		fixHandler: function (context, handler) {
+			// 返回一个修正作用域的handler
+			return function (event) {
+				// 对象兼容性在emit里面处理
+				// 修正作用域
+				return handler.call(context, event);
+			}
+		},
+		// 向队列中加入事件处理函数
+		addHandler: function (context, handler) {
+			var fixedHandlers = this.handlerQueue;
+
+			// 保证原handler有id
+			if(!handler.ST_guid) {
+				handler.ST_guid = ++guid;
+			}
+
+			// 是否已经存在
+			if(!fixedHandlers[handler.ST_guid]) {
+				// 不存在则修正作用域并添加
+				fixedHandlers[handler.ST_guid] = this.fixHandler(context, handler);
+				++this.size;
+			}
+				
+			// 不需要实际向DOM事件中添加fixedHandlers[handler.ST_guid], 由emit方法统一调度
+		},
+		// 移除事件处理函数
+		removeHandler: function (handler) {
+			var fixedHandlers = this.handlerQueue;
+			// 查找对应的fixedHandler
+			if(!handler.ST_guid||!fixedHandlers[handler.ST_guid])
+				return;
+			// 从队列中移除fixedHandler
+			fixedHandlers[handler.ST_guid] = null;
+			--this.size;
+		}
+	}
+
+	// 添加事件
+	function add (ele, type, handler) {
+		// 向dom节点对象中添加ST_handlerEmiters属性, 用来分类别缓存ST_handlerEmiter
+		if(!ele.ST_handlerEmiters)
+			ele.ST_handlerEmiters = {};
+
+		// 获取对应类别用的handlerEmiter对象
+		var handlerEmiter = ele.ST_handlerEmiters[type];
+		if(!handlerEmiter) {
+			// 第一次在该DOM对象上监听此事件, 需要加入handlerEmiter.emit()
+			handlerEmiter = ele.ST_handlerEmiters[type] = new HandlerEmiter();
+
+			// 检测缓存的addHandler方法
+			if(!_addHandler) {
+				// 能力检测
+				if (ele.addEventListener) {
+					//alert('add');
+					_addHandler = function (ele, type, handler) {
+						ele.addEventListener(type, handler, false);
+					}
+				} else if (ele.attachEvent) {
+					//alert('attach');
+					_addHandler = function (ele, type, handler) {
+						ele.attachEvent("on" + type, handler);
+					}
+				} else {
+					//alert('on');
+					_addHandler = function (ele, type, handler) {
+						ele["on" + type] = handler;
+					}
+					
+				}
+			}
+			// 执行真正的添加事件处理程序方法, 加入处理程序handlerEmiter.emit()
+			_addHandler.call(this, ele, type, handlerEmiter.emit);
+		}
+		// 之前已经绑定过handlerEmiter.emit(), 直接向队列中添加handler
+		handlerEmiter.addHandler(ele, handler);
+	}
+
+	// 删除事件
+	function remove (ele, type, handler) {
+		// 查找缓存的fixedHandler
+		if(!ele.ST_handlerEmiters)
+			return;
+		var handlerEmiter = ele.ST_handlerEmiters[type];
+		if(!handlerEmiter)
+			return;
+		handlerEmiter.removeHandler(handler);
+		// handlerEmiter中队列为空, 则清除Emiter
+		if(handlerEmiter.size === 0) {
+			// 检测缓存的removeHandler方法
+			if(!_removeHandler) {
+				// 能力检测
+				if(ele.removeEventListener) {
+					//alert('remove');
+					_removeHandler = function (ele, type, handler) {
+						ele.removeEventListener(type, handler, false);
+					}
+				} else if (ele.detachEvent) {
+					//alert('detach');
+					_removeHandler = function (ele, type, handler) {
+						ele.detachEvent("on" + type, handler);
+					}
+				} else {
+					//alert('on');
+					_removeHandler = function (ele, type, handler) {
+						ele["on" + type] = null;
+					}
+				}
+			}
+			// 执行真正的删除事件方法
+			_removeHandler.call(this, ele, type, handlerEmiter.emit);
+			// 清除放在DOM上的属性
+			ele.ST_handlerEmiters[type] = null;
+		}
+	}
+
+	// 暴露接口
+	return {
+		addHandler: add,
+		removeHandler: remove
+	};
+
+})();
+
+// 使用
+ST_on.addHandler(window, 'load', function () {
+	function mainClick (event) {
+		alert('onclick');
+		alert(event.target);
+		alert(this);
+		event.preventDefault();
+		event.stopPropagation();
+		ST_on.removeHandler(document.getElementById('main'), 'click', mainClick);
+	}
+	function nextClick (event) {
+		alert('onNextClick');
+		alert(event.target);
+		alert(this);
+		event.preventDefault();
+		event.stopPropagation();
+	}
+	ST_on.addHandler(document.getElementById('main'), 'click', mainClick);
+	ST_on.addHandler(document.getElementById('main'), 'click', nextClick);
+});
+```
