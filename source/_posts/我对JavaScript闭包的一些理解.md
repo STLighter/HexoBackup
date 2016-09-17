@@ -85,7 +85,7 @@ function createComparisonFunction(propertyName) {
 createComparisonFunction("name");
 ```
 
-代码中`compareNames`函数既没有被返回, 也没有被使用, 但在Chrome下, 我们都能观察到`compareNames`的`<function scope>`中包含有`propertyName`, 也就"记住"了其创建时的环境, 成为了闭包. 这个闭包与第一份代码的闭包没有什么区别, 只是在内存回收上有些不同(这个后面也会说到).
+代码中`compareNames`函数既没有被返回, 也没有被使用, 但在Chrome下, 我们都能观察到`compareNames`的`<function scope>`中包含有`propertyName`, 也就"记住"了其创建时的环境, 成为了闭包. 这个闭包与第一份代码的闭包没有什么区别, 只是因为闭包没有被持续引用(`createComparisonFunction`执行结束以后, 其活动对象不再被引用, `compareNames`也随之不再被引用), 所以内存可以被回收.
 
 ### 闭包如何"记住"创建时的环境
 
@@ -160,7 +160,7 @@ o("My name is ");
 ![Scope in Chrome](/uploads/ChromeScope.png)
 
 这是因为V8对闭包进行了优化. V8并不是将整个活动对象装进作用域链, 而是在函数执行时创建一个`Context`, 会被下面创建的函数所使用的变量将被放入`Context`(也还有其他方法让变量进入`Context`). 当创建函数时, 作用域链前端不是当前执行函数的活动对象, 而是`Context`. 更详细内容请参考[Grokking V8 closures for fun (and profit?)](http://mrale.ph/blog/2012/09/23/grokking-v8-closures-for-fun.html).
-V8这样做是为了更有效的回收无用的对象, 释放内存空间, 这点在后面内存回收部分细讲.
+V8这样做是为了更有效的回收无用的对象, 释放内存空间.
 
 ### 再看闭包定义
 
