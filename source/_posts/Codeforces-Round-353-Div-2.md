@@ -17,7 +17,7 @@ tags:
 题目给定3个数$a, b, c ( - 10^9 ≤ a, b, c ≤ 10^9)$,用$a$和$c$形成一个序列$s$,使得$s\_1 = a$且$s\_i - s\_{i-1} = c$ 问$b$是否在序列$s$中.
 水题,直接根据$b - a$的差值看$c$是否能够整除就行了,但是要注意$c = 0$的情况以及除得的结果需要是正数.
 
-[code](https://github.com/STLighter/CodeforcesRounds/blob/master/CF353/A.%20Infinite%20Sequence.js)
+[code](https://github.com/STLighter/LearnCoding/blob/master/CodeForcesRounds/CF353/A.%20Infinite%20Sequence.js)
 
 ---
 
@@ -30,7 +30,7 @@ tags:
 不难看出中间的格子取任意满足范围的值都行,只要计算4个角上的数与其相邻的两个数的和,如果4个和是一样的,那么中间的数取任何值都满足条件.
 简单的做法就是枚举左上角的值,判断要符合相等条件的话另外三个角的值是不是在合法范围内,如果在,那么最后结果就会多n种(中间的数取1到n).当然,也可以根据大小关系直接算出左上角取值能有多少种,然后乘以n就可以了.
 
-[code](https://github.com/STLighter/CodeforcesRounds/blob/master/CF353/B.%20Restoring%20Painting.js)
+[code](https://github.com/STLighter/LearnCoding/blob/master/CodeForcesRounds/CF353/B.%20Restoring%20Painting.js)
 <!-- more -->
 
 ---
@@ -51,7 +51,7 @@ tags:
 我们考虑,如果原序列从位置$x$到$y$组成的链的和$Sum(a\_x, a\_y) = 0$,则可以看成$Sum(a\_1, a\_{x-1}) + Sum(a\_x, a\_y) = Sum(a\_1, a\_y) = Sum(a\_1, a\_{x-1})$.这样我们只用对原序列做前缀和,如果$Sum(a\_1, a\_{x-1}) = Sum(a\_1, a\_y)$,则将$x$至$y$分为一段.最多可分的段数就是出现次数最多的前缀和的出现次数.
 因此题目转化为,给定长度为$n$的序列,求出现次数最多的前缀和的出现次数$k$,输出$n-k$.
 
-[code](https://github.com/STLighter/CodeforcesRounds/blob/master/CF353/C.%20Money%20Transfers.js)
+[code](https://github.com/STLighter/LearnCoding/blob/master/CodeForcesRounds/CF353/C.%20Money%20Transfers.js)
 
 ---
 
@@ -65,7 +65,7 @@ tags:
 也就是说,只用找到已经插入的数中刚好小于和大于$x$的数$a$和$b$,判断一下$a$有没有右儿子,有就放在$b$的左儿子上,没有就放在$a$的右儿子上.
 至于怎么找$a,b$,如果用c++的话,只需要把数扔进set里面跑lower\_bound就行了,然而js并没有这么好用的东西,我只有离散化以后扔树状数组里面瞎搞了.
 
-[code](https://github.com/STLighter/CodeforcesRounds/blob/master/CF353/D.%20Tree%20Construction.js)
+[code](https://github.com/STLighter/LearnCoding/blob/master/CodeForcesRounds/CF353/D.%20Tree%20Construction.js)
 
 ---
 
@@ -86,4 +86,4 @@ $$dp[i] = g(k,a\_i + 1) + (n - i) \qquad k|a\_k = \max(a\_{i + 1},a\_{a\_i})$$
 $$dp[i] = dp[k] - (a\_i - k) + (n - i) \qquad k|a\_k = \max(a\_{i + 1},a\_{a\_i})$$
 有了转移方程,用树状数组去找到$k$,就可以计算了,最后只用将dp数组求和就能得到最终结果了.
 
-[code](https://github.com/STLighter/CodeforcesRounds/blob/master/CF353/E.%20Trains%20and%20Statistic.js)
+[code](https://github.com/STLighter/LearnCoding/blob/master/CodeForcesRounds/CF353/E.%20Trains%20and%20Statistic.js)
