@@ -276,4 +276,71 @@ int main()
 
 ### [Problem D. Soldiers](https://code.google.com/codejam/contest/6274486/dashboard#s=p3)
 
-不太会, 这里就直接说说最近想到的一个思路, 有空再写写看..我猜排序之后将每个数选完之后还可以被选的其他数与其连边, 然后在图上dfs进行必胜态必败态间的转移大概可以?
+彻底不会..看了份代码才想明白. 想到了就是SB题, 可惜智商不够..
+给`N`个士兵, 每个有一个攻击力`A[i]`和防御力`D[i]`, Alice和Bob轮流选且Alice先选, 每次选择的士兵攻击力或者防御力必须大于所有已经被选中的士兵, 直到不能选. 两人都身经百战, 见得多了, 问Alice是否能够比Bob多选一个士兵.
+
+Alice多选一个士兵等价于先手走最后一步.
+假设攻击力最高是`x`, 防御力最高是`y`, 可知当选择的士兵里有攻击力为`x`和防御力为`y`的士兵时就不能再选了.
+如果有一个士兵的攻击力为`x`防御力为`y`, 则直接选他, 先手必胜.
+如果没有这样的士兵, 则只有攻击力为`x`且防御力小于`y`的士兵和防御力为`y`且攻击力小于`x`. 对于这两类士兵, 每类至少有一个士兵, 先选到其中一个的人必败, 因为后手可以选另一类的任意一个使得先手无法再继续选择. 因此要避免先选`A[i] = x`且`D[i] < y`和`A[i] < x`且`D[i] = y`的士兵.
+要避免这样的选择, 即要在`A[i] < x`且`D[i] < y`的士兵集合中走最后一步, 就形成了子问题.
+整体复杂度`O(n^2)`.
+
+```cpp
+//省略头文件
+using namespace std;
+typedef long long ll;
+void useFile(string f) {
+    freopen((f+".in").c_str(),"r",stdin);
+    freopen((f+".out").c_str(),"w",stdout);
+}
+int a[4010],d[4010],n;
+bool dfs() {
+    if(n == 0) {
+        return 0;
+    }
+    int x = 0,y = 0;
+    for(int i=0;i<n;++i) {
+        x = max(x, a[i]);
+        y = max(y, d[i]);
+    }
+    int l = 0;
+    for(int i=0;i<n;++i) {
+        if(a[i]!=x&&d[i]!=y) {
+            a[l] = a[i];
+            d[l] = d[i];
+            ++l;
+            continue;
+        }
+        if(a[i]==x&&d[i]==y)
+            return 1;
+    }
+    n = l;
+    return dfs();
+}
+void gao(){
+    scanf("%d",&n);
+    for(int i=0;i<n;++i) {
+        used[i] = 0;
+        scanf("%d%d",&a[i],&d[i]);
+    }
+    if(dfs()) {
+        printf("YES\n");
+        return;
+    }
+    printf("NO\n");
+    return;
+}
+int main()
+{
+    useFile("D-large-practice");
+    int t;
+    scanf("%d",&t);
+    for(int i=1;i<=t;++i) {
+        printf("Case #%d: ",i);
+        gao();
+    }
+    return 0;
+}
+
+```
