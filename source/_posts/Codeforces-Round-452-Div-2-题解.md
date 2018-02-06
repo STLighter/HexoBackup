@@ -34,7 +34,7 @@ int main() {
     return  0;
 }
 ```
-
+<!-- more -->
 ---
 
 ### [B. Months and Years](http://codeforces.com/contest/899/problem/B)
