@@ -5,7 +5,8 @@
 # Site
 title: ST_Lighterの学习笔记
 subtitle: 菜鸟龟速学习中......
-description: 不想学吉他的小画手不是好程序猿(｀・ω・´)
+description: ST_Lighterの学习笔记 - 不想学吉他的小画手不是好程序猿(｀・ω・´)
+keywords: 
 author: ST_Lighter
 language: zh-Hans
 timezone: Asia/Shanghai
@@ -42,7 +43,16 @@ highlight:
   line_number: true
   auto_detect: false
   tab_replace:
-
+  
+# Home page setting
+# path: Root path for your blogs index page. (default = '')
+# per_page: Posts displayed per page. (0 = disable pagination)
+# order_by: Posts order. (Order by date descending by default)
+index_generator:
+  path: ''
+  per_page: 10
+  order_by: -date
+  
 # Category & Tag
 default_category: uncategorized
 category_map:
