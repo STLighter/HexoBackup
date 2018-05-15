@@ -18,6 +18,16 @@ function reverse(str) {
 reverse('abcde'); // "edcba"
 
 reverse('我系渣渣辉'); // "辉渣渣系我"
+
+/*
+2018-05-15 更新
+
+function reverse(str) {
+  return str.split('').reverse().join('');
+}
+
+效果相同, 写起来更简洁
+*/
 ```
 
 这样的做法在遇到四字节字符时会出现问题, 因为在`slice`的时候一个四字节字符会被分成两个数组元素.
