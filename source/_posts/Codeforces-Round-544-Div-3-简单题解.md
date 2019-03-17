@@ -64,6 +64,7 @@ int main() {
 }
 ```
 
+<!-- more -->
 ---
 
 ### [C. Balanced Team](https://codeforces.com/contest/1133/problem/C)
